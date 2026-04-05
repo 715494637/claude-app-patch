@@ -1,3 +1,6 @@
+# Node
+node_modules/
+
 # 临时提取目录
 _temp_extract/
 _temp_verify/
@@ -13,14 +16,9 @@ claude-portable/
 # 前端源码（从 claude.ai 下载的）
 claude-ai-index.js
 
-# Node modules
-node_modules/
-
-# 截图
+# 截图 & 日志
 *.png
-
-# 日志
 *.log
 
-# 启动脚本（自动生成）
+# 自动生成的启动脚本
 launch-claude-patched.bat

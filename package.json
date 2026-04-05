@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "@electron/asar": "^4.2.0"
+    "@electron/asar": "^4.2.0",
+    "ws": "^8.20.0"
   }
 }
