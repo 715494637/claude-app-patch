@@ -1,0 +1,26 @@
+# 临时提取目录
+_temp_extract/
+_temp_verify/
+_verify_extract/
+_verify_extract2/
+temp-extract/
+temp-extract-original/
+temp-extract-patched/
+
+# 便携版构建输出
+claude-portable/
+
+# 前端源码（从 claude.ai 下载的）
+claude-ai-index.js
+
+# Node modules
+node_modules/
+
+# 截图
+*.png
+
+# 日志
+*.log
+
+# 启动脚本（自动生成）
+launch-claude-patched.bat
