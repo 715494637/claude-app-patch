@@ -14,27 +14,24 @@
 
 ## 使用方法
 
-```bash
-# 1. 安装依赖
-npm install
+> 需要已安装 [Node.js](https://nodejs.org)（≥ 18）
 
-# 2. 运行补丁（自动查找 Claude 安装目录）
-node patch-claude.js
+**双击 `run.bat` 即可，无需手动输入任何命令。**
 
-# 3. 仅预览，不实际修改
-node patch-claude.js --dry-run
-```
+脚本会自动完成：安装依赖 → 查找 Claude → 应用补丁 → 生成便携版。
+
+补丁完成后，双击 `launch-claude-patched.bat` 启动已解锁的 Claude Desktop。
 
 ## 工作原理
 
 1. 自动定位 Claude Desktop 的 `app.asar` 文件
 2. 解包 → 应用补丁 → 重新打包
-3. 重新计算完整性哈希并写回可执行文件
-4. 补丁完成后直接启动 Claude Desktop
+3. 关闭 Electron fuse 完整性校验
+4. 生成便携版目录 + 启动脚本
 
 ## 环境要求
 
-- **Windows** (目前仅支持 Windows)
+- **Windows**（目前仅支持 Windows）
 - **Node.js** ≥ 18
 - **Claude Desktop** 已安装
 
