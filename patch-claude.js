@@ -211,17 +211,18 @@ const patches = [
 
   // ============================================================
   // Patch 9: 修改主进程 ou() (getBootstrapData) 函数
-  //          - 成功获取数据时注入 capabilities
-  //          - fetch 失败时构造 mock bootstrap（使用 cookie 中的 orgId）
-  //            确保 doInitialize 能拿到 accountId 和 orgId
+  //          - 保留原始 OAuth 登录流程不变
+  //          - 仅在成功获取数据后注入 capabilities（seat_tier=max）
+  //          - 不 mock，不替换整个函数
   // ============================================================
   {
     file: ".vite/build/index.js",
-    name: "Patch ou() bootstrap: inject capabilities + mock on failure",
+    name: "Patch ou() bootstrap: inject capabilities after successful fetch",
     patches: [
       {
-        find: 'async function ou(){if(SK)return SK;if(Kb)return Kb;const t=h8;return Kb=(async()=>{try{const e=await Se.net.fetch(`${ti()}/api/bootstrap`);if(!e.ok)return t===h8&&(Kb=null),e.status===401||e.status===403?(R.warn(`[getBootstrapData] Bootstrap auth rejected (${e.status}) — session cookie likely expired`),{account:null,_clientAuthFailed:!0}):(R.warn(`[getBootstrapData] Bootstrap returned ${e.status}, treating as transient`),null);const r=await e.json();return t!==h8?(R.info("[getBootstrapData] Bootstrap cache was cleared during fetch, discarding stale result"),r):r.account?SK=r:(R.warn("[getBootstrapData] Bootstrap response has no account — user may not be logged in"),Kb=null,r)}catch(e){return R.error("[getBootstrapData] Bootstrap fetch failed",e),t===h8&&(Kb=null),null}})(),Kb}',
-        replace: `async function ou(){if(SK)return SK;if(Kb)return Kb;const t=h8;const _patchCaps=r=>{if(r&&r.account&&r.account.memberships){r.account.memberships.forEach(m=>{m.seat_tier="max";if(m.organization){let c=m.organization.capabilities||[];c=c.filter(x=>x!=="claude_pro");["claude_max","code","cowork","operon","computer_use"].forEach(x=>{if(!c.includes(x))c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}})}return r};const _mockBs=async()=>{try{const ck=await Se.session.defaultSession.cookies.get({url:ti(),name:"lastActiveOrg"});const oid=ck&&ck[0]?ck[0].value:"00000000-0000-0000-0000-000000000000";const uid=Or.randomUUID();return{account:{uuid:uid,tagged_id:"user_"+uid,email_address:"user@localhost",full_name:"User",display_name:"User",created_at:"2024-01-01T00:00:00Z",updated_at:"2024-01-01T00:00:00Z",accepted_clickwrap_versions:{},is_verified:true,age_is_verified:true,memberships:[{role:"admin",seat_tier:"max",created_at:"2024-01-01T00:00:00Z",updated_at:"2024-01-01T00:00:00Z",organization:{uuid:oid,id:0,name:"Default",settings:{},parent_organization_uuid:null,capabilities:["chat","claude_max","code","cowork","operon","computer_use"],billing_type:"stripe_subscription",free_credits_status:null,api_disabled_reason:null,api_disabled_until:null,rate_limit_tier:"default_claude_ai",data_retention:null,raven_type:null}}],workspace_memberships:[],invites:[],settings:{}},locale:null,statsig:{user:{userID:uid},values:{},values_hash:"patched"},growthbook:{features:{}},intercom_account_hash:null}}catch(e){R.error("[getBootstrapData] Mock bootstrap failed",e);return null}};return Kb=(async()=>{try{const e=await Se.net.fetch(\`\${ti()}/api/bootstrap\`);if(!e.ok){R.warn("[getBootstrapData] Bootstrap returned "+e.status+", using mock");const mk=await _mockBs();return t===h8&&(Kb=null),mk?(SK=mk):null}const r=await e.json();const p=_patchCaps(r);return t!==h8?(R.info("[getBootstrapData] Bootstrap cache was cleared during fetch, discarding stale result"),p):p.account?SK=p:(R.warn("[getBootstrapData] Bootstrap response has no account, using mock"),Kb=null,await _mockBs())}catch(e){R.error("[getBootstrapData] Bootstrap fetch failed, using mock",e);t===h8&&(Kb=null);return await _mockBs()}})(),Kb}`,
+        // 在 bootstrap 数据成功返回并赋值给 SK 之前，注入 capabilities
+        find: 'r.account?SK=r:(R.warn("[getBootstrapData] Bootstrap response has no account — user may not be logged in"),Kb=null,r)',
+        replace: 'r.account?(function(_r){if(_r.account&&_r.account.memberships){_r.account.memberships.forEach(function(m){m.seat_tier="max";if(m.organization){var c=m.organization.capabilities||[];c=c.filter(function(x){return x!=="claude_pro"});["claude_max","code","cowork","operon","computer_use"].forEach(function(x){if(c.indexOf(x)===-1)c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}})}})(r)||(SK=r):(R.warn("[getBootstrapData] Bootstrap response has no account — user may not be logged in"),Kb=null,r)',
       },
     ],
   },
@@ -244,19 +245,18 @@ const patches = [
   },
 
   // ============================================================
-  // Patch 11: 绕过 OAuth，使用 CLI 的本地认证配置
-  //           原始 _fetchBaseQueryConfig 通过 OAuth 获取 token，
-  //           服务器端会验证 Pro/Max 订阅。
-  //           补丁后跳过 OAuth，直接用 CLI settings.json 中的
-  //           env 配置（ANTHROPIC_AUTH_TOKEN + ANTHROPIC_BASE_URL）
+  // Patch 11: Claude Code 子进程使用本地 CLI 环境变量
+  //           保留原始 OAuth 流程（桌面端正常登录），
+  //           但在返回的 sessionEnv 中追加 ~/.claude/settings.json
+  //           里的 env 配置，让 Claude Code 走本地代理。
   // ============================================================
   {
     file: ".vite/build/index.js",
-    name: "Bypass OAuth in _fetchBaseQueryConfig (use CLI local config)",
+    name: "Inject CLI env vars into _fetchBaseQueryConfig sessionEnv",
     patches: [
       {
         find: 'async _fetchBaseQueryConfig(){const e=GR[yu()],r=u1(Sn("2392971184")?{...e,scope:`${e.scope} user:sessions:claude_code`}:e),[n,i]=await Promise.all([L4(r),r5e()]);if(!n.ok){const{reason:c}=n;throw R.error(`Cannot get base query config: oauth failed (${c.type}): ${c.detail}`),new vie(c)}const s=n.token;return{sessionEnv:{...await qtn({oauthToken:s,apiHost:r.apiHost,shellPath:i}),DISABLE_MICROCOMPACT:"1"}}}',
-        replace: 'async _fetchBaseQueryConfig(){const i=await r5e();return{sessionEnv:{...await qtn({oauthToken:"",apiHost:"http://localhost:8317",shellPath:i}),DISABLE_MICROCOMPACT:"1",CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST:"",ANTHROPIC_API_KEY:"sk-op",ANTHROPIC_AUTH_TOKEN:"sk-op",ANTHROPIC_BASE_URL:"http://localhost:8317",ANTHROPIC_MODEL:"air/anthropicAtBedrockClaudeV4p6Opus",ANTHROPIC_REASONING_MODEL:"air/anthropicAtBedrockClaudeV4p6Opus"}}}',
+        replace: 'async _fetchBaseQueryConfig(){const e=GR[yu()],r=u1(Sn("2392971184")?{...e,scope:`${e.scope} user:sessions:claude_code`}:e),[n,i]=await Promise.all([L4(r),r5e()]);if(!n.ok){const{reason:c}=n;throw R.error(`Cannot get base query config: oauth failed (${c.type}): ${c.detail}`),new vie(c)}const s=n.token;const _baseEnv={...await qtn({oauthToken:s,apiHost:r.apiHost,shellPath:i}),DISABLE_MICROCOMPACT:"1"};try{const _fs=require("fs"),_path=require("path"),_home=process.env.USERPROFILE||process.env.HOME||"";const _sf=_path.join(_home,".claude","settings.json");if(_fs.existsSync(_sf)){const _cfg=JSON.parse(_fs.readFileSync(_sf,"utf-8"));if(_cfg.env){Object.assign(_baseEnv,_cfg.env);R.info("[Patch] Injected CLI env vars: "+Object.keys(_cfg.env).join(", "))}}}catch(_e){R.warn("[Patch] Failed to read CLI settings.json: "+_e.message)}return{sessionEnv:_baseEnv}}',
       },
     ],
   },
@@ -279,15 +279,16 @@ const patches = [
       },
     ],
   },
-  // Patch 13: 禁用遥测和非必要服务，防止 Cloudflare 拦截循环
-  //           ic() 返回企业配置，注入 disableNonessentialTelemetry + disableNonessentialServices
+  // Patch 13: 禁用遥测 — 在原始 ic() 执行完后追加遥测禁用字段
+  //           原始 ic() 通过 switch(process.platform) 读取企业配置
+  //           补丁在最终 return fS 之前追加禁用遥测的字段
   {
     file: ".vite/build/index.js",
-    name: "Disable telemetry & non-essential services (prevent CF loop)",
+    name: "Disable telemetry (append to ic() result, keep original config)",
     patches: [
       {
-        find: 'function ic(){if(fS!==void 0)return fS;switch(process.platform)',
-        replace: 'function ic(){if(fS!==void 0)return fS;fS={disableNonessentialTelemetry:!0,disableNonessentialServices:!0,disableEssentialTelemetry:!0};return fS;switch(process.platform)',
+        find: 'custom3pMcpServers:n?"[redacted]":void 0}),fS}',
+        replace: 'custom3pMcpServers:n?"[redacted]":void 0}),fS.disableNonessentialTelemetry=!0,fS.disableEssentialTelemetry=!0,fS}',
       },
     ],
   },
