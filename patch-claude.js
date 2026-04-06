@@ -161,18 +161,18 @@ const patches = [
   // Patch 7: 在主进程中用 did-finish-load 注入 JS
   //          1. 清除旧的 react-query 缓存（防止缓存错误状态）
   //          2. 注入 fetch hook（拦截后续 bootstrap 请求）
-  //          3. 直接修改 React-Query cache 中的 bootstrap 数据
-  //             setQueryData 自动触发 React re-render
+  //          3. invalidate current_account 查询，强制重新 fetch
+  //             重新 fetch 经过 hook 修改后返回正确 capabilities
+  //          4. 同时直接 setQueryData 作为备用
   //          不使用 protocol.handle 或 CDP，不影响 CF 验证。
-  //          不需要 reload，一次加载即可。
   // ============================================================
   {
     file: ".vite/build/index.js",
-    name: "Patch bootstrap via React-Query setQueryData on did-finish-load",
+    name: "Patch bootstrap via fetch hook + invalidateQueries on did-finish-load",
     patches: [
       {
         find: 'qti(o.webContents.session),!F6r(o,ti())',
-        replace: `qti(o.webContents.session),(function(_wc){try{_wc.webContents.on("did-finish-load",()=>{const _code='(function(){try{try{localStorage.removeItem("react-query-cache-ls")}catch(e){}try{indexedDB.deleteDatabase("keyval-store")}catch(e){}if(!window.__bsPatchInstalled){window.__bsPatchInstalled=true;var _orig=window.fetch;window.fetch=function(){var a=Array.prototype.slice.call(arguments);var u=typeof a[0]==="string"?a[0]:(a[0]&&a[0].url?a[0].url:"");if(u.indexOf("/api/bootstrap")!==-1&&u.indexOf("/system_prompts")===-1){return _orig.apply(this,a).then(function(r){if(!r.ok)return r;return r.clone().text().then(function(t){try{var d=JSON.parse(t);if(d&&d.account&&d.account.memberships){d.account.memberships.forEach(function(m){m.seat_tier="max";if(m.organization){var c=m.organization.capabilities||[];c=c.filter(function(x){return x!=="claude_pro"});["claude_max","code","cowork","operon","computer_use"].forEach(function(x){if(c.indexOf(x)===-1)c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}})}return new Response(JSON.stringify(d),{status:r.status,statusText:r.statusText,headers:{"content-type":"application/json"}})}catch(e){return r}})})}return _orig.apply(this,a)}}function patchRQ(){var root=document.getElementById("root");if(!root)return;var ck=Object.keys(root).find(function(k){return k.startsWith("__reactContainer")});if(!ck)return;var fiber=root[ck];var qc=null;function find(f,d){if(!f||d>50||qc)return;if(f.memoizedProps&&f.memoizedProps.client&&typeof f.memoizedProps.client.invalidateQueries==="function"){qc=f.memoizedProps.client;return}find(f.child,d+1);if(!qc)find(f.sibling,d)}find(fiber,0);if(!qc)return;var cache=qc.getQueryCache();var aq=cache.getAll().find(function(q){return q.queryKey[0]==="current_account"});if(!aq||!aq.state.data)return;var d=JSON.parse(JSON.stringify(aq.state.data));if(d.account&&d.account.memberships){d.account.memberships.forEach(function(m){m.seat_tier="max";if(m.organization){var c=m.organization.capabilities||[];c=c.filter(function(x){return x!=="claude_pro"});["claude_max","code","cowork","operon","computer_use"].forEach(function(x){if(c.indexOf(x)===-1)c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}});qc.setQueryData(aq.queryKey,d);return true}}if(!patchRQ()){setTimeout(function(){if(!patchRQ()){setTimeout(function(){patchRQ()},2000)}},1000)}return "ok"}catch(e){return "err:"+e.message}})()';_wc.webContents.executeJavaScript(_code).then(r=>{R.info("[Patch] did-finish-load: "+r)}).catch(e=>R.error("[Patch] executeJS err:",e))});R.info("[Patch] did-finish-load handler registered")}catch(_e){R.error("[Patch] setup failed: "+_e)}})(o),!F6r(o,ti())`,
+        replace: `qti(o.webContents.session),(function(_wc){try{_wc.webContents.on("did-finish-load",()=>{const _code='(function(){try{try{localStorage.removeItem("react-query-cache-ls")}catch(e){}try{indexedDB.deleteDatabase("keyval-store")}catch(e){}if(!window.__bsPatchInstalled){window.__bsPatchInstalled=true;var _orig=window.fetch;window.fetch=function(){var a=Array.prototype.slice.call(arguments);var u=typeof a[0]==="string"?a[0]:(a[0]&&a[0].url?a[0].url:"");if(u.indexOf("/api/bootstrap")!==-1&&u.indexOf("/system_prompts")===-1){return _orig.apply(this,a).then(function(r){if(!r.ok)return r;return r.clone().text().then(function(t){try{var d=JSON.parse(t);if(d&&d.account&&d.account.memberships){d.account.memberships.forEach(function(m){m.seat_tier="max";if(m.organization){var c=m.organization.capabilities||[];c=c.filter(function(x){return x!=="claude_pro"});["claude_max","code","cowork","operon","computer_use"].forEach(function(x){if(c.indexOf(x)===-1)c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}})}return new Response(JSON.stringify(d),{status:r.status,statusText:r.statusText,headers:{"content-type":"application/json"}})}catch(e){return r}})})}return _orig.apply(this,a)}}function getQC(){var root=document.getElementById("root");if(!root)return null;var ck=Object.keys(root).find(function(k){return k.startsWith("__reactContainer")});if(!ck)return null;var fiber=root[ck];var qc=null;function find(f,d){if(!f||d>50||qc)return;if(f.memoizedProps&&f.memoizedProps.client&&typeof f.memoizedProps.client.invalidateQueries==="function"){qc=f.memoizedProps.client;return}find(f.child,d+1);if(!qc)find(f.sibling,d)}find(fiber,0);return qc}function patchRQ(){var qc=getQC();if(!qc)return false;qc.invalidateQueries({queryKey:["current_account"]});setTimeout(function(){var qc2=getQC();if(!qc2)return;var cache=qc2.getQueryCache();var aq=cache.getAll().find(function(q){return q.queryKey[0]==="current_account"});if(aq&&aq.state.data){var d=JSON.parse(JSON.stringify(aq.state.data));if(d.account&&d.account.memberships){d.account.memberships.forEach(function(m){m.seat_tier="max";if(m.organization){var c=m.organization.capabilities||[];c=c.filter(function(x){return x!=="claude_pro"});["claude_max","code","cowork","operon","computer_use"].forEach(function(x){if(c.indexOf(x)===-1)c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}});qc2.setQueryData(aq.queryKey,d)}}},3000);return true}if(!patchRQ()){setTimeout(function(){if(!patchRQ()){setTimeout(function(){if(!patchRQ()){setTimeout(function(){patchRQ()},3000)}},2000)}},1000)}return "ok"}catch(e){return "err:"+e.message}})()';_wc.webContents.executeJavaScript(_code).then(r=>{R.info("[Patch] did-finish-load: "+r)}).catch(e=>R.error("[Patch] executeJS err:",e))});R.info("[Patch] did-finish-load handler registered")}catch(_e){R.error("[Patch] setup failed: "+_e)}})(o),!F6r(o,ti())`,
       },
     ],
   },
@@ -213,19 +213,21 @@ const patches = [
   },
 
   // ============================================================
-  // Patch 9: 修改主进程 ou() (getBootstrapData) 函数
-  //          - 保留原始 OAuth 登录流程不变
-  //          - 仅在成功获取数据后注入 capabilities（seat_tier=max）
-  //          - 不 mock，不替换整个函数
+  // Patch 9: 替换整个 ou() (getBootstrapData) 函数
+  //          - 成功路径：注入 capabilities（seat_tier=max, code, operon 等）
+  //          - 失败路径（401/403/网络错误）：构造 mock bootstrap 数据
+  //            从 Electron cookie 读取 orgId，用固定 accountId
+  //            确保 doInitialize 能设置 currentAccountId/currentOrgId
+  //          - 解决 Code Tab "sign-in expired" 错误
   // ============================================================
   {
     file: ".vite/build/index.js",
-    name: "Patch ou() bootstrap: inject capabilities after successful fetch",
+    name: "Patch ou() bootstrap: capabilities injection + mock fallback on failure",
     patches: [
       {
-        // 在 bootstrap 数据成功返回并赋值给 SK 之前，注入 capabilities
-        find: 'r.account?SK=r:(R.warn("[getBootstrapData] Bootstrap response has no account — user may not be logged in"),Kb=null,r)',
-        replace: 'r.account?(function(_r){if(_r.account&&_r.account.memberships){_r.account.memberships.forEach(function(m){m.seat_tier="max";if(m.organization){var c=m.organization.capabilities||[];c=c.filter(function(x){return x!=="claude_pro"});["claude_max","code","cowork","operon","computer_use"].forEach(function(x){if(c.indexOf(x)===-1)c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}})}})(r)||(SK=r):(R.warn("[getBootstrapData] Bootstrap response has no account — user may not be logged in"),Kb=null,r)',
+        // 替换整个 ou() 函数体（从 if(SK) 到 catch 块结束）
+        find: 'if(SK)return SK;if(Kb)return Kb;const t=h8;return Kb=(async()=>{try{const e=await Se.net.fetch(`${ti()}/api/bootstrap`);if(!e.ok)return t===h8&&(Kb=null),e.status===401||e.status===403?(R.warn(`[getBootstrapData] Bootstrap auth rejected (${e.status}) — session cookie likely expired`),{account:null,_clientAuthFailed:!0}):(R.warn(`[getBootstrapData] Bootstrap returned ${e.status}, treating as transient`),null);const r=await e.json();return t!==h8?(R.info("[getBootstrapData] Bootstrap cache was cleared during fetch, discarding stale result"),r):r.account?SK=r:(R.warn("[getBootstrapData] Bootstrap response has no account — user may not be logged in"),Kb=null,r)}catch(e){return R.error("[getBootstrapData] Bootstrap fetch failed",e),t===h8&&(Kb=null),null}})(),Kb}',
+        replace: 'if(SK)return SK;if(Kb)return Kb;const t=h8;const _injectCaps=function(_r){if(_r&&_r.account&&_r.account.memberships){_r.account.memberships.forEach(function(m){m.seat_tier="max";if(m.organization){var c=m.organization.capabilities||[];c=c.filter(function(x){return x!=="claude_pro"});["claude_max","code","cowork","operon","computer_use"].forEach(function(x){if(c.indexOf(x)===-1)c.push(x)});m.organization.capabilities=c;m.organization.billing_type="stripe_subscription"}})}return _r};const _mockBs=async function(){try{const _cookies=await Se.session.defaultSession.cookies.get({url:ti(),name:"lastActiveOrg"});let _orgId=null;for(const _c of _cookies){if(_c.value&&/^[0-9a-f-]{36}$/i.test(_c.value)){_orgId=_c.value;break}}if(!_orgId){R.warn("[Patch] No lastActiveOrg cookie found, trying all cookies");const _allCookies=await Se.session.defaultSession.cookies.get({url:ti()});for(const _c of _allCookies){if(_c.name==="lastActiveOrg"&&_c.value){_orgId=_c.value;break}}}R.info("[Patch] Building mock bootstrap, orgId="+_orgId);const _mock={account:{uuid:"00000000-0000-4000-8000-000000000001",tagged_id:"user_patched_local",memberships:[{seat_tier:"max",organization:{uuid:_orgId||"00000000-0000-4000-8000-000000000002",name:"Local",capabilities:["claude_max","code","cowork","operon","computer_use"],billing_type:"stripe_subscription"}}]}};return _mock}catch(_e){R.error("[Patch] Mock bootstrap construction failed: "+_e.message);return{account:{uuid:"00000000-0000-4000-8000-000000000001",tagged_id:"user_patched_local",memberships:[{seat_tier:"max",organization:{uuid:"00000000-0000-4000-8000-000000000002",name:"Local",capabilities:["claude_max","code","cowork","operon","computer_use"],billing_type:"stripe_subscription"}}]}}}}; return Kb=(async()=>{try{const e=await Se.net.fetch(`${ti()}/api/bootstrap`);if(!e.ok){t===h8&&(Kb=null);R.warn("[getBootstrapData] Bootstrap returned "+e.status+", using mock fallback");const _fb=await _mockBs();return SK=_injectCaps(_fb),SK}const r=await e.json();if(t!==h8)return _injectCaps(r);if(r.account){return SK=_injectCaps(r),SK}else{R.warn("[getBootstrapData] No account in response, using mock fallback");Kb=null;const _fb=await _mockBs();return SK=_injectCaps(_fb),SK}}catch(e){R.error("[getBootstrapData] Bootstrap fetch failed, using mock fallback",e);t===h8&&(Kb=null);const _fb=await _mockBs();return SK=_injectCaps(_fb),SK}})(),Kb}',
       },
     ],
   },
@@ -427,13 +429,33 @@ async function main() {
   const appSrcDir = path.join(claudeDir, "app");
 
   console.log("\nPreparing portable dir...");
+  // Always remove old portable dir and do a fresh copy
+  if (fs.existsSync(portableDir)) {
+    console.log("  Removing old portable dir...");
+    try {
+      fs.rmSync(portableDir, { recursive: true, force: true });
+    } catch (e) {
+      // If rmSync fails (e.g. exe locked), try PowerShell
+      console.log("  rmSync failed, trying PowerShell...");
+      try {
+        execSync(`powershell -Command "Remove-Item -Recurse -Force '${portableDir}' -ErrorAction SilentlyContinue"`, { stdio: "pipe" });
+      } catch {}
+    }
+  }
   if (!fs.existsSync(portableDir)) {
     fs.cpSync(appSrcDir, portableDir, { recursive: true });
   } else {
-    try {
-      fs.copyFileSync(path.join(appSrcDir, "claude.exe"), portableExe);
-    } catch (e) {
-      console.log("  (exe locked, will patch in-place)");
+    // Directory still exists (exe locked) — copy everything except locked exe
+    console.log("  (dir locked, copying files around locked exe)");
+    const entries = fs.readdirSync(appSrcDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const src = path.join(appSrcDir, entry.name);
+      const dst = path.join(portableDir, entry.name);
+      if (entry.name === "claude.exe") {
+        try { fs.copyFileSync(src, dst); } catch { console.log("  (exe locked, skipping)"); }
+      } else {
+        try { fs.cpSync(src, dst, { recursive: true, force: true }); } catch {}
+      }
     }
     if (!fs.existsSync(portableResources))
       fs.mkdirSync(portableResources, { recursive: true });
