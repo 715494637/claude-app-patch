@@ -1,36 +1,44 @@
 @echo off
-chcp 65001 >nul
+chcp 65001 >nul 2>nul
 title Claude Desktop Patcher
 echo.
 echo ========================================
-echo   Claude Desktop Patcher - 一键补丁
+echo   Claude Desktop Patcher
 echo ========================================
 echo.
 
-:: 检查 Node.js
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [错误] 未检测到 Node.js，请先安装: https://nodejs.org
+    echo [ERROR] Node.js not found. Install: https://nodejs.org
     echo.
     pause
     exit /b 1
 )
 
-:: 进入脚本所在目录
 cd /d "%~dp0"
 
-:: 安装依赖
-echo [1/2] 安装依赖...
+:: Kill portable Claude if running (don't touch CLI)
+echo Closing patched Claude Desktop if running...
+powershell -Command "Get-Process -Name claude -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -like '*claude-portable*' } | Stop-Process -Force" >nul 2>&1
+timeout /t 3 /nobreak >nul
+
+:: Clean old portable dir
+if exist claude-portable (
+    echo Removing old portable dir...
+    powershell -Command "Remove-Item -Recurse -Force '%~dp0claude-portable' -ErrorAction SilentlyContinue" >nul 2>&1
+    timeout /t 1 /nobreak >nul
+)
+
+echo [1/2] Installing dependencies...
 call npm install --no-audit --no-fund >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [错误] 依赖安装失败
+    echo [ERROR] npm install failed
     pause
     exit /b 1
 )
-echo       完成
+echo       Done
 
-:: 运行补丁
-echo [2/2] 运行补丁...
+echo [2/2] Patching...
 echo.
 node patch-claude.js
 echo.
