@@ -249,17 +249,17 @@ const patches = [
 
   // ============================================================
   // Patch 11: Claude Code 子进程使用本地 CLI 环境变量
-  //           保留原始 OAuth 流程（桌面端正常登录），
-  //           但在返回的 sessionEnv 中追加 ~/.claude/settings.json
-  //           里的 env 配置，让 Claude Code 走本地代理。
+  //           OAuth 成功时：在 sessionEnv 中追加 settings.json env
+  //           OAuth 失败时：不抛错，直接用 settings.json env 作为 fallback
+  //           确保即使登录过期也能启动本地 Claude Code 会话
   // ============================================================
   {
     file: ".vite/build/index.js",
-    name: "Inject CLI env vars into _fetchBaseQueryConfig sessionEnv",
+    name: "Inject CLI env vars into _fetchBaseQueryConfig (with OAuth fallback)",
     patches: [
       {
         find: 'async _fetchBaseQueryConfig(){const e=GR[yu()],r=u1(Sn("2392971184")?{...e,scope:`${e.scope} user:sessions:claude_code`}:e),[n,i]=await Promise.all([L4(r),r5e()]);if(!n.ok){const{reason:c}=n;throw R.error(`Cannot get base query config: oauth failed (${c.type}): ${c.detail}`),new vie(c)}const s=n.token;return{sessionEnv:{...await qtn({oauthToken:s,apiHost:r.apiHost,shellPath:i}),DISABLE_MICROCOMPACT:"1"}}}',
-        replace: 'async _fetchBaseQueryConfig(){const e=GR[yu()],r=u1(Sn("2392971184")?{...e,scope:`${e.scope} user:sessions:claude_code`}:e),[n,i]=await Promise.all([L4(r),r5e()]);if(!n.ok){const{reason:c}=n;throw R.error(`Cannot get base query config: oauth failed (${c.type}): ${c.detail}`),new vie(c)}const s=n.token;const _baseEnv={...await qtn({oauthToken:s,apiHost:r.apiHost,shellPath:i}),DISABLE_MICROCOMPACT:"1"};try{const _fs=require("fs"),_path=require("path"),_home=process.env.USERPROFILE||process.env.HOME||"";const _sf=_path.join(_home,".claude","settings.json");if(_fs.existsSync(_sf)){const _cfg=JSON.parse(_fs.readFileSync(_sf,"utf-8"));if(_cfg.env){Object.assign(_baseEnv,_cfg.env);R.info("[Patch] Injected CLI env vars: "+Object.keys(_cfg.env).join(", "))}}}catch(_e){R.warn("[Patch] Failed to read CLI settings.json: "+_e.message)}return{sessionEnv:_baseEnv}}',
+        replace: 'async _fetchBaseQueryConfig(){const _readCliEnv=()=>{try{const _fs=require("fs"),_path=require("path"),_home=process.env.USERPROFILE||process.env.HOME||"";const _sf=_path.join(_home,".claude","settings.json");if(_fs.existsSync(_sf)){const _cfg=JSON.parse(_fs.readFileSync(_sf,"utf-8"));if(_cfg.env){R.info("[Patch] Read CLI env: "+Object.keys(_cfg.env).join(", "));return _cfg.env}}}catch(_e){R.warn("[Patch] Failed to read CLI settings.json: "+_e.message)}return{}};const e=GR[yu()],r=u1(Sn("2392971184")?{...e,scope:`${e.scope} user:sessions:claude_code`}:e);let i;try{i=await r5e()}catch(_e){i=null}let _baseEnv;try{const[n]=await Promise.all([L4(r)]);if(!n.ok)throw new Error("oauth failed");const s=n.token;_baseEnv={...await qtn({oauthToken:s,apiHost:r.apiHost,shellPath:i}),DISABLE_MICROCOMPACT:"1"}}catch(_e){R.warn("[Patch] OAuth failed, using CLI env as fallback: "+_e.message);_baseEnv={DISABLE_MICROCOMPACT:"1",PATH:process.env.PATH||""}}Object.assign(_baseEnv,_readCliEnv());return{sessionEnv:_baseEnv}}',
       },
     ],
   },
