@@ -1,6 +1,6 @@
 # Claude Desktop Patcher
 
-解锁 Claude Desktop Max+Dev(Windows) 的补丁工具。
+解锁 Claude Desktop Max+Dev(Windows) 的补丁工具，Code tab自动复用本地cli配置，支持自定义API提供商。
 
 ## 解锁功能
 
