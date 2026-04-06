@@ -1,6 +1,6 @@
 # Claude Desktop Patcher
 
-一键解锁 Claude Desktop (Windows) 隐藏功能的补丁工具。
+解锁 Claude Desktop Max+Dev(Windows) 的补丁工具。
 
 ## 解锁功能
 
@@ -61,6 +61,4 @@
 - **Claude Desktop** 已安装
 - **网络代理**（如果你所在地区无法直连 claude.ai，需开启系统代理）
 
-## 免责声明
 
-本工具仅供学习和研究用途。使用本工具修改 Claude Desktop 可能违反 Anthropic 的服务条款，请自行承担风险。
