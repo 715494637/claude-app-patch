@@ -13,6 +13,8 @@
 | **默认侧边栏** | 将默认 `sidebarMode` 设为 `"code"` |
 | **Claude Code 环境变量** | 自动读取 `~/.claude/settings.json` 中的 `env` 配置 |
 
+![alt text](image.png)
+
 ## 使用方法
 
 > 需要已安装 [Node.js](https://nodejs.org)（≥ 18）和 [Claude Desktop](https://claude.ai/download)
@@ -38,7 +40,6 @@
 ```json
 {
   "env": {
-    "ANTHROPIC_AUTH_TOKEN": "your-token",
     "ANTHROPIC_BASE_URL": "http://localhost:8317"
   }
 }
