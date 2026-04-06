@@ -17,7 +17,7 @@ claude-portable/
 claude-ai-index.js
 
 # 截图 & 日志
-*.png
+
 *.log
 
 # 自动生成的启动脚本
