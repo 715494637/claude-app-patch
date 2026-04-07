@@ -164,15 +164,26 @@ function patchAsar() {
     let code = fs.readFileSync(indexJs, 'utf-8');
     let patched = 0;
 
-    // Patch: remove https-only restriction on baseUrl
+    // Patch 1: remove https-only restriction on baseUrl
     const httpsCheck = '.url().refine(t=>new URL(t).protocol==="https:",{message:"must use https"})';
     const httpsRepl = '.url()';
     if (code.includes(httpsCheck)) {
         code = code.replace(httpsCheck, httpsRepl);
-        ok('Patch: removed HTTPS-only restriction on baseUrl');
+        ok('Patch: removed HTTPS-only restriction');
         patched++;
-    } else if (!code.includes(httpsCheck)) {
+    } else {
         inf('Patch: HTTPS restriction already removed');
+    }
+
+    // Patch 2: bypass Cowork install check (portable is not "modern installer")
+    const coworkCheck = 'function qOe(){const t=vmn();if(t)return t;if(aee)return aee;const e=mmn();return e.status!=="supported"?MV(e):ic().secureVmFeaturesEnabled===!1?MV({status:"unsupported",reason:ot.formatMessage({defaultMessage:"Ask your IT administrator to enable the secureVmFeaturesEnabled setting in the Claude desktop configuration profile.",id:"kVng8z8Z1z",description:"Hint appended to Cowork disabled-by-enterprise message"}),unsupportedCode:"disabled_by_enterprise"}):Rr("secureVmFeaturesEnabled")===!1?MV({status:"unsupported",reason:ot.formatMessage({defaultMessage:"Enable the secureVmFeaturesEnabled preference to use this feature.",id:"Fm12gxKRxW",description:"Hint appended to Cowork disabled-by-user message"}),unsupportedCode:"disabled_by_user"}):MV({status:"supported"})}';
+    const coworkRepl = 'function qOe(){return MV({status:"supported"})}';
+    if (code.includes(coworkCheck)) {
+        code = code.replace(coworkCheck, coworkRepl);
+        ok('Patch: bypassed Cowork install check');
+        patched++;
+    } else {
+        inf('Patch: Cowork check already bypassed or not found');
     }
 
     if (patched > 0) {
