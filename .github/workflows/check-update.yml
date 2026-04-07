@@ -37,9 +37,9 @@ jobs:
       - name: Package schemes
         if: steps.check.outputs.HAS_UPDATE == 'true'
         run: |
-          zip -r 3p-https-without-login.zip 3p-https-without-login/
-          zip -r 3p-http-without-login.zip 3p-http-without-login/
-          zip -r official-patch-need-login.zip official-patch-need-login/
+          zip -r 3p-https-without-login-without-patch.zip 3p-https-without-login-without-patch/
+          zip -r 3p-http-without-login-need-patch.zip 3p-http-without-login-need-patch/
+          zip -r official-need-login-need-patch.zip official-need-login-need-patch/
 
       - name: Create Release
         if: steps.check.outputs.HAS_UPDATE == 'true'
@@ -55,9 +55,9 @@ jobs:
             | 文件 | 说明 |
             |------|------|
             | `Claude-Desktop-v${{ steps.check.outputs.LATEST_VERSION }}-x64.exe` | 官方安装包 |
-            | `3p-https-without-login.zip` | ⭐ 方案1：3P Gateway（推荐，HTTPS，免登录，不改文件） |
-            | `3p-http-without-login.zip` | 方案2：3P Gateway + HTTP 补丁（免登录） |
-            | `official-patch-need-login.zip` | 方案3：官方版补丁（需登录，功能解锁） |
+            | `3p-https-without-login-without-patch.zip` | ⭐ 方案1：3P Gateway（推荐，HTTPS，免登录，不改文件） |
+            | `3p-http-without-login-need-patch.zip` | 方案2：3P Gateway + HTTP 补丁（免登录） |
+            | `official-need-login-need-patch.zip` | 方案3：官方版补丁（需登录，功能解锁） |
 
             ### 方案说明
 
@@ -76,9 +76,9 @@ jobs:
             SHA256: `${{ steps.check.outputs.SHA256 }}`
           files: |
             Claude-Desktop-v${{ steps.check.outputs.LATEST_VERSION }}-x64.exe
-            3p-https-without-login.zip
-            3p-http-without-login.zip
-            official-patch-need-login.zip
+            3p-https-without-login-without-patch.zip
+            3p-http-without-login-need-patch.zip
+            official-need-login-need-patch.zip
 
       - name: Update version file
         if: steps.check.outputs.HAS_UPDATE == 'true'

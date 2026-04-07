@@ -13,9 +13,9 @@
 | 文件 | 说明 |
 |---|---|
 | `Claude-Desktop-vX.X.X-x64.exe` | Claude Desktop 官方安装包 |
-| `3p-https-without-login.zip` | ⭐ **方案 1**：免登录，HTTPS 端点，不改文件（推荐） |
-| `3p-http-without-login.zip` | 方案 2：免登录，支持 HTTP 端点 |
-| `official-patch-need-login.zip` | 方案 3：需登录，解锁隐藏功能 |
+| `3p-https-without-login-without-patch.zip` | ⭐ **方案 1**：免登录，HTTPS 端点，不改文件（推荐） |
+| `3p-http-without-login-need-patch.zip` | 方案 2：免登录，支持 HTTP 端点 |
+| `official-need-login-need-patch.zip` | 方案 3：需登录，解锁隐藏功能 |
 
 > 每日自动检测 Claude Desktop 新版本并发布 Release。
 
@@ -55,24 +55,24 @@
 > 最简单，不修改任何文件，仅写注册表。免登录。
 
 - **适合**：API 端点是 HTTPS 的用户（大多数中转都是 HTTPS）
-- **双击** `3p-https-without-login/setup.bat` → 自动读取配置 → 重启 Claude 即可
-- **卸载**：双击 `3p-https-without-login/uninstall.bat`
+- **双击** `3p-https-without-login-without-patch/setup.bat` → 自动读取配置 → 重启 Claude 即可
+- **卸载**：双击 `3p-https-without-login-without-patch/uninstall.bat`
 
 ### 方案 2 - HTTP Patch
 
 > 在方案 1 基础上去除 HTTPS 限制。免登录。
 
 - **适合**：API 端点是 HTTP 的用户（如 `http://localhost:8317`）
-- **双击** `3p-http-without-login/setup.bat` → 自动构建便携版 + 配置 → 启动
-- **卸载**：双击 `3p-http-without-login/uninstall.bat`
+- **双击** `3p-http-without-login-need-patch/setup.bat` → 自动构建便携版 + 配置 → 启动
+- **卸载**：双击 `3p-http-without-login-need-patch/uninstall.bat`
 
 ### 方案 3 - 官方版补丁（需登录）
 
 > 需要 Anthropic 账号登录，解锁 Code Tab、Operon、Computer Use 等隐藏功能。
 
 - **适合**：有官方账号，想解锁额外功能的用户
-- **双击** `official-patch-need-login/setup.bat` → 自动构建便携版 + 打补丁 → 启动
-- **卸载**：双击 `official-patch-need-login/uninstall.bat`
+- **双击** `official-need-login-need-patch/setup.bat` → 自动构建便携版 + 打补丁 → 启动
+- **卸载**：双击 `official-need-login-need-patch/uninstall.bat`
 
 ### 方案差异一览
 
@@ -94,21 +94,21 @@
 
 ```powershell
 # 直接复用 CLI 配置（不交互）
-powershell -File 3p-https-without-login\setup.ps1 -FromCli
+powershell -File 3p-https-without-login-without-patch\setup.ps1 -FromCli
 
 # 手动指定端点
-powershell -File 3p-https-without-login\setup.ps1 -BaseUrl "https://your-api.com" -ApiKey "sk-xxx"
+powershell -File 3p-https-without-login-without-patch\setup.ps1 -BaseUrl "https://your-api.com" -ApiKey "sk-xxx"
 
 # 查看当前配置
-powershell -File 3p-https-without-login\setup.ps1 -Status
+powershell -File 3p-https-without-login-without-patch\setup.ps1 -Status
 ```
 
 方案 2/3 也支持命令行：
 
 ```powershell
-node 3p-http-without-login\setup.js --from-cli    # 不交互
-node 3p-http-without-login\setup.js --status       # 查看状态
-node 3p-http-without-login\setup.js --uninstall    # 卸载
+node 3p-http-without-login-need-patch\setup.js --from-cli    # 不交互
+node 3p-http-without-login-need-patch\setup.js --status       # 查看状态
+node 3p-http-without-login-need-patch\setup.js --uninstall    # 卸载
 ```
 
 ---

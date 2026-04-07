@@ -4,8 +4,8 @@ package-lock.json
 
 # 便携版构建输出（运行时生成）
 claude-portable/
-3p-http-without-login/claude-portable/
-official-patch-need-login/claude-portable/
+3p-http-without-login-need-patch/claude-portable/
+official-need-login-need-patch/claude-portable/
 
 # 临时提取目录
 _temp_extract/
