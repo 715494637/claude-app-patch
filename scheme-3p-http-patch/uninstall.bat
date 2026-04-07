@@ -4,5 +4,15 @@ powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -V
 exit /b
 
 :run
+echo [*] Closing Claude Desktop...
+powershell -NoProfile -Command ^
+  "Get-Process claude -ErrorAction SilentlyContinue | ForEach-Object {" ^
+  "  try { $p = $_.Path } catch { $p = '' };" ^
+  "  if ($p -like '*WindowsApps*' -or $p -like '*claude-portable*') {" ^
+  "    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue" ^
+  "  }" ^
+  "}"
+timeout /t 2 /nobreak >nul
+
 node "%~dp0setup.js" --uninstall
 pause

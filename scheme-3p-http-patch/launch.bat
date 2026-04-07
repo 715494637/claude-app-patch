@@ -1,9 +1,5 @@
 @echo off
->nul 2>&1 reg query "HKU\S-1-5-19" && goto :run
-powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" %*' -Verb RunAs"
-exit /b
-
-:run
+title Claude (3P Gateway - HTTP Patched)
 echo [*] Closing Claude Desktop...
 powershell -NoProfile -Command ^
   "Get-Process claude -ErrorAction SilentlyContinue | ForEach-Object {" ^
@@ -14,5 +10,5 @@ powershell -NoProfile -Command ^
   "}"
 timeout /t 2 /nobreak >nul
 
-node "%~dp0setup.js" %*
-pause
+cd /d "%~dp0claude-portable"
+start "" "claude.exe" %*
