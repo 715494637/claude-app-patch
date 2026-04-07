@@ -39,7 +39,7 @@ jobs:
         run: |
           zip -r scheme-3p-gateway.zip scheme-3p-gateway/
           zip -r scheme-3p-http-patch.zip scheme-3p-http-patch/
-          zip -r scheme-full-patch.zip scheme-full-patch/ -x "scheme-full-patch/claude-portable/*" "scheme-full-patch/_*" "scheme-full-patch/node_modules/*"
+          zip -r scheme-full-patch.zip scheme-full-patch/
 
       - name: Create Release
         if: steps.check.outputs.HAS_UPDATE == 'true'
