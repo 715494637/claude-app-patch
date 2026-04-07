@@ -230,10 +230,13 @@ function patchAsar() {
 
 // ============ Write registry ============
 function writeRegistry(url, key, models) {
+    // Clean up old keys from all schemes (may have wrong permissions)
+    for (const h of ['HKCU\\SOFTWARE\\Policies\\Claude', 'HKLM\\SOFTWARE\\Policies\\Claude']) {
+        try { execSync(`reg delete "${h}" /f`, { stdio: 'pipe' }); } catch {}
+    }
+
     const rk = pickRegKey();
     inf(`Registry: ${rk}`);
-
-    try { execSync(`reg delete "${rk}" /f`, { stdio: 'pipe' }); } catch {}
 
     regAdd(rk, 'custom3pProvider', 'gateway');
     regAdd(rk, 'custom3pBaseUrl', url);

@@ -75,24 +75,24 @@ function Read-CliSettings {
 }
 
 function Reg-Set($key, $name, $value, $type = "REG_SZ") {
-    # Use .reg file import to preserve quotes in JSON values
-    $hive = if ($key.StartsWith("HKLM")) { "HKEY_LOCAL_MACHINE" } else { "HKEY_CURRENT_USER" }
-    $subkey = $key -replace "^HKCU\\\\|^HKLM\\\\", ""
-    $fullKey = "$hive\$subkey"
-    if ($type -eq "REG_DWORD") {
-        $regVal = "dword:{0:x8}" -f [int]$value
-    } else {
-        $escaped = $value.Replace('\','\\').Replace('"','\"')
-        $regVal = "`"$escaped`""
+    # Convert key format: HKCU\SOFTWARE\... -> HKCU:\SOFTWARE\...
+    $psPath = $key -replace '^HKCU\\', 'HKCU:\' -replace '^HKLM\\', 'HKLM:\'
+    if (-not (Test-Path $psPath)) {
+        New-Item -Path $psPath -Force | Out-Null
     }
-    $tmp = Join-Path $env:TEMP "_claude_reg_$(Get-Random).reg"
-    $content = "Windows Registry Editor Version 5.00`r`n`r`n[$fullKey]`r`n`"$name`"=$regVal`r`n"
-    [System.IO.File]::WriteAllText($tmp, $content, [System.Text.Encoding]::Unicode)
-    regedit /s $tmp 2>&1 | Out-Null
-    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    if ($type -eq "REG_DWORD") {
+        New-ItemProperty -Path $psPath -Name $name -Value ([int]$value) -PropertyType DWord -Force | Out-Null
+    } else {
+        New-ItemProperty -Path $psPath -Name $name -Value $value -PropertyType String -Force | Out-Null
+    }
 }
 
 function Write-Registry($Url, $Key, $Mdl) {
+    # Clean up old keys (may have wrong permissions from other schemes)
+    foreach ($h in @("HKCU\SOFTWARE\Policies\Claude", "HKLM\SOFTWARE\Policies\Claude")) {
+        reg delete $h /f 2>&1 | Out-Null
+    }
+
     # Try HKCU first, fall back to HKLM
     $null = reg add "HKCU\SOFTWARE\Policies\Claude" /v _probe /t REG_SZ /d "" /f 2>&1
     if ($LASTEXITCODE -eq 0) {
