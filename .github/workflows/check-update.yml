@@ -1,0 +1,92 @@
+name: Check Claude Desktop Update
+
+on:
+  schedule:
+    - cron: '17 8 * * *'  # UTC 8:17 daily (Beijing 16:17)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check latest version
+        id: check
+        run: node scripts/check-version.js
+
+      - name: Exit if no update
+        if: steps.check.outputs.HAS_UPDATE != 'true'
+        run: echo "No update found. Current is latest." && exit 0
+
+      - name: Download installer
+        if: steps.check.outputs.HAS_UPDATE == 'true'
+        run: |
+          VERSION="${{ steps.check.outputs.LATEST_VERSION }}"
+          URL="${{ steps.check.outputs.DOWNLOAD_URL }}"
+          curl -L -o "Claude-Desktop-v${VERSION}-x64.exe" "$URL"
+          ls -lh Claude-Desktop-*.exe
+
+      - name: Package schemes
+        if: steps.check.outputs.HAS_UPDATE == 'true'
+        run: |
+          zip -r scheme-3p-gateway.zip scheme-3p-gateway/
+          zip -r scheme-3p-http-patch.zip scheme-3p-http-patch/
+          zip -r scheme-full-patch.zip scheme-full-patch/ -x "scheme-full-patch/claude-portable/*" "scheme-full-patch/_*" "scheme-full-patch/node_modules/*"
+
+      - name: Create Release
+        if: steps.check.outputs.HAS_UPDATE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.check.outputs.LATEST_VERSION }}
+          name: Claude Desktop v${{ steps.check.outputs.LATEST_VERSION }}
+          body: |
+            ## Claude Desktop v${{ steps.check.outputs.LATEST_VERSION }}
+
+            ### 下载
+
+            | 文件 | 说明 |
+            |------|------|
+            | `Claude-Desktop-v${{ steps.check.outputs.LATEST_VERSION }}-x64.exe` | 官方安装包 |
+            | `scheme-3p-gateway.zip` | ⭐ 方案1：3P Gateway（推荐，HTTPS，不改文件） |
+            | `scheme-3p-http-patch.zip` | 方案2：3P Gateway + HTTP 补丁 |
+            | `scheme-full-patch.zip` | 方案3：完整补丁（免登录） |
+
+            ### 方案说明
+
+            **⭐ 方案1 - 3P Gateway（推荐）**
+            仅写注册表，不修改任何 Claude 文件。需要 HTTPS 端点。
+            自动读取 `~/.claude/settings.json` 配置。
+
+            **方案2 - 3P Gateway + HTTP 补丁**
+            在方案1基础上，去除 HTTPS 限制，支持 HTTP 端点（如 localhost）。
+            复制 Claude 到本地 portable 目录运行。
+
+            **方案3 - 完整补丁（免登录）**
+            无需 Anthropic 账号登录。解锁全部功能（Code Tab、Operon、Computer Use 等）。
+            自动读取 `~/.claude/settings.json` 环境变量路由到自定义端点。
+
+            ---
+            SHA256: `${{ steps.check.outputs.SHA256 }}`
+          files: |
+            Claude-Desktop-v${{ steps.check.outputs.LATEST_VERSION }}-x64.exe
+            scheme-3p-gateway.zip
+            scheme-3p-http-patch.zip
+            scheme-full-patch.zip
+
+      - name: Update version file
+        if: steps.check.outputs.HAS_UPDATE == 'true'
+        run: |
+          echo "${{ steps.check.outputs.LATEST_VERSION }}" > scripts/version.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/version.txt
+          git commit -m "chore: update version to ${{ steps.check.outputs.LATEST_VERSION }}"
+          git push

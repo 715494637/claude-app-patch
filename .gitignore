@@ -1,24 +1,30 @@
 # Node
 node_modules/
+package-lock.json
+
+# 便携版构建输出（运行时生成）
+claude-portable/
+scheme-3p-http-patch/claude-portable/
+scheme-full-patch/claude-portable/
 
 # 临时提取目录
 _temp_extract/
 _temp_verify/
 _verify_extract/
-_verify_extract2/
 temp-extract/
 temp-extract-original/
 temp-extract-patched/
 
-# 便携版构建输出
-claude-portable/
+# asar 备份
+*.asar.backup
 
-# 前端源码（从 claude.ai 下载的）
-claude-ai-index.js
-
-# 截图 & 日志
-
+# 日志
 *.log
 
-# 自动生成的启动脚本
+# 旧文件（待删除）
+dev/
+patch-claude.js
+run.bat
 launch-claude-patched.bat
+zh-CN.json
+claude-ai-index.js

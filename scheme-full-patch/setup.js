@@ -1,71 +1,121 @@
-#!/usr/bin/env node
 /**
- * Claude Desktop Patcher
+ * Claude Desktop - Portable Patch (Full)
  *
- * 解锁功能:
- *   1. Code Tab (yukonSilver) — 绕过平台/VM检查，直接返回 supported
- *   2. 开发者特性 (V0e) — 绕过 isPackaged 检查
- *   3. Operon 功能 — 直接返回 supported
- *   4. Computer Use — 绕过平台检查
- *   5. 默认 sidebarMode 改为 "code"
- *   6. Claude Code 使用 ~/.claude/settings.json 中的环境变量
+ * Copies official Claude to local portable dir, applies all patches:
+ *   - Auth bypass (mock bootstrap + capability injection)
+ *   - Feature unlocks (Code Tab, Operon, Computer Use, dev features)
+ *   - CLI env var injection (API routing to custom endpoint)
+ *   - Mock IPC handlers (Operon, ClaudeVM)
+ *   - Telemetry disable, locale, DevTools shortcuts
  *
- * 原地替换原版 app.asar（保持 UWP 包身份），自动备份。
+ * Reads ~/.claude/settings.json for endpoint/key/model config.
  *
- * 用法:
- *   node patch-claude.js                  # 自动查找并补丁
- *   node patch-claude.js --dry-run        # 仅预览，不实际修改
+ * Usage:
+ *   node setup.js                     # Interactive
+ *   node setup.js --from-cli          # Auto from CLI config
+ *   node setup.js --patch-only        # Only build portable
+ *   node setup.js --uninstall         # Remove portable dir
+ *   node setup.js --status            # Show status
  */
 
-const fs = require("fs");
-const path = require("path");
-const { execSync } = require("child_process");
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execSync } = require('child_process');
+const readline = require('readline');
+
+// ============ Paths ============
+const PORTABLE_DIR = path.resolve(__dirname, 'claude-portable');
+const PORTABLE_ASAR = path.join(PORTABLE_DIR, 'resources', 'app.asar');
+const PORTABLE_EXE = path.join(PORTABLE_DIR, 'claude.exe');
+const LAUNCHER = path.resolve(__dirname, 'launch.bat');
+const TMP = path.resolve(__dirname, '_patch_tmp');
+const CLI_SETTINGS = path.join(process.env.USERPROFILE || '', '.claude', 'settings.json');
 
 const args = process.argv.slice(2);
-const DRY_RUN = args.includes("--dry-run");
-const OUT_DIR = __dirname;
+const flag = (f) => args.includes(f);
 
-// ─── 查找 Claude 安装目录 ──────────────────────────────────
+// ============ Helpers ============
+const C = { r: '\x1b[0m', g: '\x1b[32m', y: '\x1b[33m', c: '\x1b[36m', e: '\x1b[31m' };
+const ok = m => console.log(`${C.g}  [+] ${m}${C.r}`);
+const inf = m => console.log(`${C.c}  [i] ${m}${C.r}`);
+const err = m => console.log(`${C.e}  [x] ${m}${C.r}`);
+const wrn = m => console.log(`${C.y}  [!] ${m}${C.r}`);
+const hdr = m => console.log(`${C.c}\n${m}${C.r}`);
 
-function findClaudeDir() {
-  try {
-    const result = execSync(
-      'powershell -Command "(Get-AppxPackage -Name \'*Claude*\').InstallLocation"',
-      { stdio: "pipe", encoding: "utf-8" }
-    ).trim();
-    if (result && fs.existsSync(result)) return result;
-  } catch {}
-
-  const base = "C:\\Program Files\\WindowsApps";
-  try {
-    const entries = fs.readdirSync(base);
-    const claudeDir = entries
-      .filter((e) => e.startsWith("Claude_") && e.includes("_x64_"))
-      .sort()
-      .pop();
-    if (claudeDir) return path.join(base, claudeDir);
-  } catch {}
-  return null;
+function maskKey(k) {
+    if (!k) return '(none)';
+    return k.length > 12 ? k.slice(0, 8) + '...' + k.slice(-4) : '***';
 }
 
-function findAsarPath() {
-  const dir = findClaudeDir();
-  return dir ? path.join(dir, "app", "resources", "app.asar") : null;
+function ask(q) {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    return new Promise(r => rl.question(q, a => { rl.close(); r(a.trim()); }));
 }
 
-function ensureAsar() {
-  try {
-    execSync("npx --yes @electron/asar --version", { stdio: "pipe" });
-    return true;
-  } catch {
-    console.error("Need @electron/asar. Run: npm i -g @electron/asar");
-    return false;
-  }
+// ============ Find official Claude ============
+function findClaudeAppDir() {
+    try {
+        const result = execSync(
+            'powershell -NoProfile -Command "(Get-AppxPackage -Name \'*Claude*\').InstallLocation"',
+            { stdio: 'pipe', encoding: 'utf-8' }
+        ).trim();
+        if (result && fs.existsSync(result)) {
+            const d = path.join(result, 'app');
+            if (fs.existsSync(path.join(d, 'resources', 'app.asar'))) return d;
+        }
+    } catch {}
+    const wa = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'WindowsApps');
+    try {
+        const dirs = fs.readdirSync(wa)
+            .filter(e => /^Claude_[\d.]+_x64__/.test(e))
+            .sort().reverse();
+        if (!dirs.length) return null;
+        const d = path.join(wa, dirs[0], 'app');
+        return fs.existsSync(path.join(d, 'resources', 'app.asar')) ? d : null;
+    } catch { return null; }
 }
 
-// ─── Patch 定义 ──────────────────────────────────────────────
+const OFFICIAL_DIR = findClaudeAppDir();
 
-const patches = [
+// ============ Read CLI config ============
+function readCli() {
+    if (!fs.existsSync(CLI_SETTINGS)) return null;
+    try {
+        const j = JSON.parse(fs.readFileSync(CLI_SETTINGS, 'utf-8'));
+        const e = j.env || {};
+        return {
+            url: e.ANTHROPIC_BASE_URL || null,
+            key: e.ANTHROPIC_AUTH_TOKEN || e.ANTHROPIC_API_KEY || e.API_KEY || null,
+            model: e.ANTHROPIC_MODEL || null,
+        };
+    } catch { return null; }
+}
+
+// ============ Kill Desktop only (not CLI) ============
+function killDesktop() {
+    try {
+        const ps = execSync(
+            'powershell -NoProfile -Command "Get-Process claude -ErrorAction SilentlyContinue | Select-Object Id,Path | ConvertTo-Csv -NoTypeInformation"',
+            { encoding: 'utf-8' }
+        );
+        const lines = ps.trim().split('\n').slice(1);
+        let killed = 0;
+        for (const line of lines) {
+            const match = line.match(/"(\d+)","(.+?)"/);
+            if (!match) continue;
+            const [, pid, exePath] = match;
+            if (exePath.includes('WindowsApps') || exePath.includes('claude-portable')) {
+                try { process.kill(parseInt(pid)); killed++; } catch {}
+            }
+        }
+        if (killed > 0) ok(`Killed ${killed} Desktop process(es) (CLI untouched)`);
+        else inf('No Desktop processes found');
+    } catch { inf('Could not enumerate processes'); }
+}
+
+// ============ Patch definitions (from patch-claude.js) ============
+const PATCHES = [
   // ============================================================
   // Patch 1: Code Tab (yukonSilver) — 绕过所有检查，直接返回 supported
   // 用精确字符串匹配完整函数体（771字符）
@@ -333,189 +383,175 @@ const patches = [
   },
 ];
 
-// ─── Helpers ────────────────────────────────────────────────
-
-function resolveGlob(baseDir, pattern) {
-  const dir = path.join(baseDir, path.dirname(pattern));
-  const fp = path.basename(pattern);
-  if (!fp.includes("*")) return [path.join(baseDir, pattern)];
-  const re = new RegExp(
-    "^" + fp.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$"
-  );
-  try {
-    return fs
-      .readdirSync(dir)
-      .filter((f) => re.test(f))
-      .map((f) => path.join(dir, f));
-  } catch {
-    return [];
-  }
-}
-
-function applyPatch(content, patch) {
-  const { find, replace } = patch;
-  if (find instanceof RegExp) {
-    if (find.test(content)) {
-      find.lastIndex = 0;
-      return { content: content.replace(find, replace), applied: true };
-    }
-    return { content, applied: false };
-  }
-  if (content.includes(find)) {
-    return { content: content.split(find).join(replace), applied: true };
-  }
-  return { content, applied: false };
-}
-
-// ─── Main ───────────────────────────────────────────────────
-
-async function main() {
-  console.log("=== Claude Desktop Patcher (CTF) ===\n");
-
-  const asarPath = findAsarPath();
-  if (!asarPath || !fs.existsSync(asarPath)) {
-    console.error("Cannot find app.asar.");
-    process.exit(1);
-  }
-  const claudeDir = findClaudeDir();
-  const claudeExe = claudeDir
-    ? path.join(claudeDir, "app", "claude.exe")
-    : null;
-
-  console.log("app.asar:", asarPath);
-  if (!ensureAsar()) process.exit(1);
-
-  const tmpDir = path.join(
-    require("os").tmpdir(),
-    `claude-patch-${Date.now()}`
-  );
-  const extractDir = path.join(tmpDir, "app");
-
-  console.log("Extracting...");
-  execSync(
-    `npx @electron/asar extract "${asarPath}" "${extractDir}"`,
-    { stdio: "inherit" }
-  );
-
-  let totalApplied = 0;
-  for (const group of patches) {
-    console.log(`\n[${group.name}]`);
-    const files = resolveGlob(extractDir, group.file);
-    if (files.length === 0) {
-      console.log("  (no matching files, skipping)");
-      continue;
-    }
-    for (const filePath of files) {
-      let content = fs.readFileSync(filePath, "utf-8");
-      let modified = false;
-      for (const patch of group.patches) {
-        const { content: c, applied } = applyPatch(content, patch);
-        if (applied) {
-          content = c;
-          modified = true;
-          const s =
-            patch.find instanceof RegExp
-              ? patch.find.toString().slice(0, 60)
-              : patch.find.slice(0, 60);
-          console.log(`  ✓ OK: ${s}...`);
-          totalApplied++;
-        } else {
-          const s =
-            patch.find instanceof RegExp
-              ? patch.find.toString().slice(0, 60)
-              : patch.find.slice(0, 60);
-          console.log(`  ✗ MISS: ${s}...`);
+// ============ Apply patches ============
+function applyPatches(extractDir) {
+    let total = 0, applied = 0;
+    for (const group of PATCHES) {
+        const filePath = path.join(extractDir, group.file);
+        if (!fs.existsSync(filePath)) {
+            wrn(`File not found: ${group.file}`);
+            continue;
         }
-      }
-      if (modified && !DRY_RUN) fs.writeFileSync(filePath, content, "utf-8");
+        let code = fs.readFileSync(filePath, 'utf-8');
+        let modified = false;
+        for (const p of group.patches) {
+            total++;
+            if (code.includes(p.find)) {
+                code = code.split(p.find).join(p.replace);
+                modified = true;
+                applied++;
+                ok(`${group.name}: ${p.find.slice(0, 50)}...`);
+            } else {
+                wrn(`MISS: ${group.name}: ${p.find.slice(0, 50)}...`);
+            }
+        }
+        if (modified) fs.writeFileSync(filePath, code, 'utf-8');
     }
-  }
-
-  console.log(`\nPatches applied: ${totalApplied}/${patches.reduce((a, g) => a + g.patches.length, 0)}`);
-  if (DRY_RUN) {
-    console.log("(dry-run, no files written)");
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    return;
-  }
-
-  // ── Build portable copy ──
-  const portableDir = path.join(OUT_DIR, "claude-portable");
-  const portableResources = path.join(portableDir, "resources");
-  const portableExe = path.join(portableDir, "claude.exe");
-  const appSrcDir = path.join(claudeDir, "app");
-
-  console.log("\nPreparing portable dir...");
-  // Always remove old portable dir and do a fresh copy
-  if (fs.existsSync(portableDir)) {
-    console.log("  Removing old portable dir...");
-    try {
-      fs.rmSync(portableDir, { recursive: true, force: true });
-    } catch (e) {
-      // If rmSync fails (e.g. exe locked), try PowerShell
-      console.log("  rmSync failed, trying PowerShell...");
-      try {
-        execSync(`powershell -Command "Remove-Item -Recurse -Force '${portableDir}' -ErrorAction SilentlyContinue"`, { stdio: "pipe" });
-      } catch {}
-    }
-  }
-  if (!fs.existsSync(portableDir)) {
-    fs.cpSync(appSrcDir, portableDir, { recursive: true });
-  } else {
-    // Directory still exists (exe locked) — copy everything except locked exe
-    console.log("  (dir locked, copying files around locked exe)");
-    const entries = fs.readdirSync(appSrcDir, { withFileTypes: true });
-    for (const entry of entries) {
-      const src = path.join(appSrcDir, entry.name);
-      const dst = path.join(portableDir, entry.name);
-      if (entry.name === "claude.exe") {
-        try { fs.copyFileSync(src, dst); } catch { console.log("  (exe locked, skipping)"); }
-      } else {
-        try { fs.cpSync(src, dst, { recursive: true, force: true }); } catch {}
-      }
-    }
-    if (!fs.existsSync(portableResources))
-      fs.mkdirSync(portableResources, { recursive: true });
-  }
-
-  // Pack patched asar
-  console.log("Packing patched app.asar...");
-  const targetAsar = path.join(portableResources, "app.asar");
-  execSync(
-    `npx @electron/asar pack "${extractDir}" "${targetAsar}"`,
-    { stdio: "inherit" }
-  );
-
-  // ── Copy zh-CN.json to portable resources ──
-  const zhCNSrc = path.join(OUT_DIR, "zh-CN.json");
-  if (fs.existsSync(zhCNSrc)) {
-    const zhCNDst = path.join(portableResources, "zh-CN.json");
-    fs.copyFileSync(zhCNSrc, zhCNDst);
-    console.log("Copied zh-CN.json → portable/resources/");
-  }
-
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-
-  // ── Flip Electron fuses ──
-  console.log("Flipping Electron fuses...");
-  execSync(
-    `npx --yes @electron/fuses write --app "${portableExe}" OnlyLoadAppFromAsar=off EnableEmbeddedAsarIntegrityValidation=off`,
-    { stdio: "inherit" }
-  );
-
-  // Create launcher
-  const launcherPath = path.join(OUT_DIR, "launch-claude-patched.bat");
-  fs.writeFileSync(
-    launcherPath,
-    `@echo off\r\ntitle Claude (Patched)\r\ncd /d "%~dp0claude-portable"\r\nstart "" "claude.exe" --remote-debugging-port=9333 %*\r\n`
-  );
-
-  console.log("\n=== Done! ===");
-  console.log(`Portable dir: ${portableDir}`);
-  console.log(`Launcher:     ${launcherPath}`);
-  console.log(`\nDouble-click launch-claude-patched.bat to start.`);
+    inf(`Patches: ${applied}/${total} applied`);
+    return applied > 0;
 }
 
-main().catch((err) => {
-  console.error("Error:", err.message);
-  process.exit(1);
-});
+// ============ Build portable + patch ============
+function buildPortable() {
+    if (!OFFICIAL_DIR) { err('Official Claude not found'); return false; }
+
+    inf('Copying official Claude to portable dir...');
+    if (fs.existsSync(PORTABLE_DIR)) {
+        try { fs.rmSync(PORTABLE_DIR, { recursive: true, force: true }); } catch {
+            wrn('Portable dir locked, updating files...');
+        }
+    }
+    if (!fs.existsSync(PORTABLE_DIR)) {
+        fs.cpSync(OFFICIAL_DIR, PORTABLE_DIR, { recursive: true });
+        ok('Copied official Claude');
+    } else {
+        const entries = fs.readdirSync(OFFICIAL_DIR, { withFileTypes: true });
+        for (const entry of entries) {
+            const src = path.join(OFFICIAL_DIR, entry.name);
+            const dst = path.join(PORTABLE_DIR, entry.name);
+            try { fs.cpSync(src, dst, { recursive: true, force: true }); } catch {}
+        }
+        ok('Updated portable dir');
+    }
+
+    // Extract
+    inf('Extracting app.asar...');
+    fs.rmSync(TMP, { recursive: true, force: true });
+    execSync(`npx asar extract "${PORTABLE_ASAR}" "${TMP}"`, { stdio: 'pipe' });
+
+    // Patch
+    applyPatches(TMP);
+
+    // Repack
+    inf('Repacking app.asar...');
+    execSync(`npx asar pack "${TMP}" "${PORTABLE_ASAR}"`, { stdio: 'pipe' });
+    ok('Repack done');
+
+    fs.rmSync(TMP, { recursive: true, force: true });
+
+    // Flip Electron fuses
+    inf('Flipping Electron fuses...');
+    try {
+        execSync(`npx --yes @electron/fuses write --app "${PORTABLE_EXE}" OnlyLoadAppFromAsar=off EnableEmbeddedAsarIntegrityValidation=off`, { stdio: 'pipe' });
+        ok('Electron fuses flipped');
+    } catch (e) {
+        wrn('Fuse flip failed (may still work): ' + e.message);
+    }
+
+    // Create launcher
+    fs.writeFileSync(LAUNCHER,
+        `@echo off\r\ntitle Claude (Patched Portable)\r\ncd /d "%~dp0claude-portable"\r\nstart "" "claude.exe" %*\r\n`
+    );
+    ok(`Launcher: launch.bat`);
+
+    return true;
+}
+
+// ============ Launch ============
+function launchPortable() {
+    if (!fs.existsSync(PORTABLE_EXE)) { wrn('Portable exe not found'); return; }
+    try {
+        execSync(`start "" "${PORTABLE_EXE}"`, { stdio: 'pipe', shell: true });
+        ok('Launched portable Claude');
+    } catch { wrn('Auto-launch failed. Double-click launch.bat'); }
+}
+
+// ============ Status ============
+function showStatus() {
+    hdr('===== Portable Patch Status =====');
+    if (OFFICIAL_DIR) inf(`Official: ${OFFICIAL_DIR}`);
+    else err('Official Claude not found');
+    if (fs.existsSync(PORTABLE_DIR)) ok(`Portable: ${PORTABLE_DIR}`);
+    else inf('Portable: not created');
+
+    const cli = readCli();
+    if (cli) {
+        hdr('===== CLI Config =====');
+        inf(`URL=${cli.url}  Key=${maskKey(cli.key)}  Model=${cli.model}`);
+    }
+    console.log('');
+}
+
+// ============ Interactive ============
+async function interactive() {
+    hdr('===== Claude Desktop Portable Patch (MVP) =====');
+
+    const cli = readCli();
+    if (cli && cli.url) {
+        ok(`CLI config: ${cli.url} | ${maskKey(cli.key)} | ${cli.model}`);
+        inf('Patches will use ~/.claude/settings.json at runtime');
+    } else {
+        wrn('No CLI config found at ~/.claude/settings.json');
+        wrn('Create it with ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_MODEL');
+        const ch = await ask('  Continue anyway? [y/N] ');
+        if (!/^[Yy]/.test(ch)) { inf('Cancelled'); return; }
+    }
+
+    killDesktop();
+    if (!buildPortable()) { err('Build failed'); return; }
+    launchPortable();
+
+    console.log(`\n${C.g}  Done! Patched Claude launched.${C.r}`);
+    console.log(`${C.c}  Next time: double-click launch.bat${C.r}\n`);
+}
+
+// ============ Main ============
+async function main() {
+    if (flag('--help') || flag('-h')) {
+        console.log(`
+  Portable Patch (MVP) — No login, custom endpoint
+  ==================================================
+  node setup.js                Interactive
+  node setup.js --from-cli     Auto from ~/.claude/settings.json
+  node setup.js --patch-only   Only build portable (no launch)
+  node setup.js --uninstall    Remove portable dir
+  node setup.js --status       Show status
+`);
+    } else if (flag('--status')) {
+        showStatus();
+    } else if (flag('--uninstall')) {
+        killDesktop();
+        inf('Waiting for processes to exit...');
+        execSync('ping -n 3 127.0.0.1 >nul', { stdio: 'pipe' });
+        if (fs.existsSync(PORTABLE_DIR)) {
+            try { fs.rmSync(PORTABLE_DIR, { recursive: true, force: true }); ok('Portable dir removed'); }
+            catch { wrn('Could not remove (close Claude first)'); }
+        }
+        if (fs.existsSync(LAUNCHER)) fs.unlinkSync(LAUNCHER);
+        ok('Uninstall complete');
+    } else if (flag('--patch-only')) {
+        killDesktop();
+        buildPortable();
+    } else if (flag('--from-cli')) {
+        const cli = readCli();
+        if (!cli || !cli.url) { err('CLI config not found'); process.exit(1); }
+        killDesktop();
+        if (!buildPortable()) { err('Build failed'); process.exit(1); }
+        launchPortable();
+        console.log(`\n${C.g}  Done! Patched Claude launched.${C.r}\n`);
+    } else {
+        await interactive();
+    }
+}
+
+main().catch(e => { err(e.message); process.exit(1); });
