@@ -113,6 +113,12 @@ node scheme-3p-http-patch\setup.js --uninstall    # 卸载
 
 ---
 
+## 已知限制
+
+- **Cowork（协作工作区）** 功能暂不可用，仍在研究中。聊天和 Code Tab 正常使用。
+
+---
+
 ## 常见问题
 
 **Q: 提示 URL 必须是 HTTPS？**
