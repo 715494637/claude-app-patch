@@ -186,6 +186,17 @@ function patchAsar() {
         inf('Patch: Cowork check already bypassed or not found');
     }
 
+    // Patch 3: Mock ClaudeVM IPC handlers (portable has no Swift VM addon)
+    const vmFind = 'const{handleCoworkVMApi:w,cleanupVMBundleIfUnsupported:S}=await Promise.resolve().then(()=>hci);w(e.webContents),S()';
+    const vmRepl = 'const{handleCoworkVMApi:w,cleanupVMBundleIfUnsupported:S}=await Promise.resolve().then(()=>hci);(function(_wc){try{const _ipc=Se.ipcMain;const _p="$eipc_message$_1853bcd3-f7ee-4392-b085-ee0c6cfacc4c_$_claude.web_$_ClaudeVM_$_";let _dlStatus="not_downloaded",_runStatus="offline",_dlProgress=0;const _handlers={"download":async()=>{if(_dlStatus==="ready")return{success:true};_dlStatus="downloading";_dlProgress=0;const _tick=()=>new Promise(r=>setTimeout(r,120));for(let i=0;i<=100;i+=2){_dlProgress=i;try{_wc.send("$eipc_event$_1853bcd3-f7ee-4392-b085-ee0c6cfacc4c_$_claude.web_$_ClaudeVM_$_onDownloadProgress",i)}catch(e){}await _tick()}_dlStatus="ready";try{_wc.send("$eipc_event$_1853bcd3-f7ee-4392-b085-ee0c6cfacc4c_$_claude.web_$_ClaudeVM_$_onDownloadStatusChanged","ready")}catch(e){}return{success:true}},"startVM":async()=>{if(_runStatus==="ready")return{success:true};_runStatus="booting";try{_wc.send("$eipc_event$_1853bcd3-f7ee-4392-b085-ee0c6cfacc4c_$_claude.web_$_ClaudeVM_$_onRunningStatusChanged","booting")}catch(e){}await new Promise(r=>setTimeout(r,3000));_runStatus="ready";try{_wc.send("$eipc_event$_1853bcd3-f7ee-4392-b085-ee0c6cfacc4c_$_claude.web_$_ClaudeVM_$_onRunningStatusChanged","ready")}catch(e){}return{success:true}},"getDownloadStatus":async()=>_dlStatus,"getRunningStatus":async()=>_runStatus,"isHostLoopModeEnabled":async()=>false,"isHostLoopDevOverrideActive":async()=>false,"setForceDisableHostLoop":async()=>{},"setYukonSilverConfig":async()=>{},"getInitialApiReachabilityState":async()=>({status:"reachable"}),"checkVirtualMachinePlatform":async()=>true,"enableVirtualMachinePlatform":async()=>true,"restartAfterVMPInstall":async()=>{},"deleteAndReinstall":async()=>{}};Object.entries(_handlers).forEach(([k,fn])=>{const ch=_p+k;try{_ipc.removeHandler(ch)}catch(e){}try{_ipc.handle(ch,async(ev,...args)=>fn(...args))}catch(e){}});const _syncHandlers={"isHostLoopModeEnabled":false,"isHostLoopDevOverrideActive":false,"getDownloadStatus":"not_downloaded","getRunningStatus":"offline"};Object.entries(_syncHandlers).forEach(([k,v])=>{const ch=_p+k;try{_ipc.removeAllListeners(ch)}catch(e){}try{_ipc.on(ch,(ev)=>{ev.returnValue=v})}catch(e){}});R.info("[Patch] Mock ClaudeVM IPC handlers registered")}catch(_e){R.error("[Patch] Mock ClaudeVM failed: "+_e)}})(e.webContents),S()';
+    if (code.includes(vmFind)) {
+        code = code.replace(vmFind, vmRepl);
+        ok('Patch: Mock ClaudeVM IPC handlers');
+        patched++;
+    } else {
+        inf('Patch: ClaudeVM handler not found');
+    }
+
     if (patched > 0) {
         fs.writeFileSync(indexJs, code, 'utf-8');
     }
