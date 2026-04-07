@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '17 8 * * *'  # UTC 8:17 daily (Beijing 16:17)
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force rebuild even if no update'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -22,27 +27,44 @@ jobs:
         id: check
         run: node scripts/check-version.js
 
-      - name: Exit if no update
-        if: steps.check.outputs.HAS_UPDATE != 'true'
-        run: echo "No update found. Current is latest." && exit 0
+      - name: Determine if should build
+        id: should_build
+        run: |
+          if [ "${{ github.event.inputs.force }}" = "true" ] || [ "${{ steps.check.outputs.HAS_UPDATE }}" = "true" ]; then
+            echo "BUILD=true" >> $GITHUB_OUTPUT
+            echo "Will build: force=${{ github.event.inputs.force }}, has_update=${{ steps.check.outputs.HAS_UPDATE }}"
+          else
+            echo "BUILD=false" >> $GITHUB_OUTPUT
+            echo "No update found. Skipping."
+          fi
 
       - name: Download installer
-        if: steps.check.outputs.HAS_UPDATE == 'true'
+        if: steps.should_build.outputs.BUILD == 'true' && steps.check.outputs.DOWNLOAD_URL != ''
         run: |
           VERSION="${{ steps.check.outputs.LATEST_VERSION }}"
           URL="${{ steps.check.outputs.DOWNLOAD_URL }}"
-          curl -L -o "Claude-Desktop-v${VERSION}-x64.exe" "$URL"
+          echo "Downloading Claude Desktop v${VERSION}..."
+          curl -L --retry 3 --retry-delay 5 -o "Claude-Desktop-v${VERSION}-x64.exe" "$URL"
           ls -lh Claude-Desktop-*.exe
 
       - name: Package schemes
-        if: steps.check.outputs.HAS_UPDATE == 'true'
+        if: steps.should_build.outputs.BUILD == 'true'
         run: |
           zip -r 3p-https-without-login-without-patch.zip 3p-https-without-login-without-patch/
           zip -r 3p-http-without-login-need-patch.zip 3p-http-without-login-need-patch/
           zip -r official-need-login-need-patch.zip official-need-login-need-patch/
 
+      - name: Delete existing release if any
+        if: steps.should_build.outputs.BUILD == 'true'
+        run: |
+          VERSION="${{ steps.check.outputs.LATEST_VERSION }}"
+          gh release delete "v${VERSION}" --yes 2>/dev/null || true
+          git push origin --delete "v${VERSION}" 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
-        if: steps.check.outputs.HAS_UPDATE == 'true'
+        if: steps.should_build.outputs.BUILD == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.check.outputs.LATEST_VERSION }}
@@ -55,8 +77,8 @@ jobs:
             | 文件 | 说明 |
             |------|------|
             | `Claude-Desktop-v${{ steps.check.outputs.LATEST_VERSION }}-x64.exe` | 官方安装包 |
-            | `3p-https-without-login-without-patch.zip` | ⭐ 方案1：3P Gateway（推荐，HTTPS，免登录，不改文件） |
-            | `3p-http-without-login-need-patch.zip` | 方案2：3P Gateway + HTTP 补丁（免登录） |
+            | `3p-https-without-login-without-patch.zip` | ⭐ 方案1：3P HTTPS（推荐，免登录，不改文件） |
+            | `3p-http-without-login-need-patch.zip` | 方案2：3P HTTP（免登录） |
             | `official-need-login-need-patch.zip` | 方案3：官方版补丁（需登录，功能解锁） |
 
             ### 方案说明
