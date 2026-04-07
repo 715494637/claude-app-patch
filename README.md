@@ -2,7 +2,11 @@
 
 让 Claude Desktop (Windows) 接入自定义 API 端点，免登录使用。
 
-![alt text](image.png)
+方案 1，2 图示：
+![alt text](images/preview-3p.png)
+
+方案 3 图示：
+![alt text](images/preview-official.png)
 
 ---
 
@@ -146,4 +150,4 @@ https://new2.882111.xyz/
 
 交流群
 
-![alt text](6ce0d5bd6137a53e49e0426764008c5e.png)
+![alt text](images/qq-group.png)
