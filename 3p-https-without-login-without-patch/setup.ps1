@@ -38,7 +38,7 @@ function Kill-Desktop {
     foreach ($p in $procs) {
         try {
             $exePath = $p.Path
-            if ($exePath -and ($exePath -like '*WindowsApps*' -or $exePath -like '*claude-portable*')) {
+            if ($exePath -and ($exePath -like '*WindowsApps*' -or $exePath -like '*claude-portable*' -or $exePath -like '*AnthropicClaude*')) {
                 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
                 $killed++
             }
@@ -103,19 +103,20 @@ function Write-Registry($Url, $Key, $Mdl) {
     }
 
     Write-Inf "Writing to $rk"
-    Reg-Set $rk "custom3pProvider" "gateway"
-    Reg-Set $rk "custom3pBaseUrl" $Url
-    Reg-Set $rk "custom3pApiKey" $Key
-    if ($Mdl) { Reg-Set $rk "custom3pModels" $Mdl }
+    # New key names for Claude Desktop >= 1.2.0 (app version >= 1.1348.0)
+    Reg-Set $rk "inferenceProvider" "gateway"
+    Reg-Set $rk "inferenceGatewayBaseUrl" $Url
+    Reg-Set $rk "inferenceGatewayApiKey" $Key
+    if ($Mdl) { Reg-Set $rk "inferenceModels" $Mdl }
     Reg-Set $rk "disableEssentialTelemetry" 1 "REG_DWORD"
     Reg-Set $rk "disableNonessentialTelemetry" 1 "REG_DWORD"
     Reg-Set $rk "disableNonessentialServices" 1 "REG_DWORD"
     Reg-Set $rk "disableAutoUpdates" 1 "REG_DWORD"
 
-    Write-Ok "custom3pProvider = gateway"
-    Write-Ok "custom3pBaseUrl = $Url"
-    Write-Ok "custom3pApiKey = $(Mask-Key $Key)"
-    if ($Mdl) { Write-Ok "custom3pModels = $Mdl" }
+    Write-Ok "inferenceProvider = gateway"
+    Write-Ok "inferenceGatewayBaseUrl = $Url"
+    Write-Ok "inferenceGatewayApiKey = $(Mask-Key $Key)"
+    if ($Mdl) { Write-Ok "inferenceModels = $Mdl" }
     Write-Ok "Telemetry + auto-update disabled"
 
     Kill-Desktop
@@ -153,7 +154,7 @@ function Start-Interactive {
         $ch = Read-Host "  Reuse? [Y/n]"
         if ($ch -eq "" -or $ch -match "^[Yy]") {
             $mdl = $null
-            if ($cli.Model) { $mdl = "[{\`"id\`":\`"$($cli.Model)\`",\`"name\`":\`"$($cli.Model)\`"}]" }
+            if ($cli.Model) { $mdl = "[`"$($cli.Model)`"]" }
             Write-Registry -Url $cli.BaseUrl -Key $cli.ApiKey -Mdl $mdl
             return
         }
@@ -201,7 +202,7 @@ elseif ($FromCli) {
     if (-not (Require-Https $cli.BaseUrl)) { exit 1 }
     $mdl = $null
     if ($Models) { $mdl = $Models }
-    elseif ($cli.Model) { $mdl = "[{\`"id\`":\`"$($cli.Model)\`",\`"name\`":\`"$($cli.Model)\`"}]" }
+    elseif ($cli.Model) { $mdl = "[`"$($cli.Model)`"]" }
     Write-Registry -Url $cli.BaseUrl -Key $cli.ApiKey -Mdl $mdl
 }
 elseif ($BaseUrl) {
