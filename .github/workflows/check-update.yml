@@ -14,6 +14,22 @@ permissions:
   contents: write
 
 jobs:
+clone-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone releases from source repo
+        uses: andrewthetechie/gha-clone-releases@v1  # 使用该 Action[reference:17]
+        with:
+          # 必填：GitHub Token
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # 必填：源仓库
+          src_repo: 715494637/claude-app-patch  # 替换为你要复制的源仓库
+          # 可选：目标仓库，不填则默认为当前仓库
+          # dest_repo: 你的用户名/你的仓库名
+          # 关键：设置为 true 以复制 Release 附件
+          copy_assets: true
+          # 可选：跳过预发布版本
+          # skip_prerelease: true
   check-update:
     runs-on: ubuntu-latest
     steps:
